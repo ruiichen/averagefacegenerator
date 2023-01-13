@@ -1,0 +1,69 @@
+<html>
+
+<head>
+    <style>
+        h4 {
+            display: flex;
+            flex-direction: row;
+        }
+
+        h4:before,
+        h4:after {
+            content: " ";
+            flex: 1 1;
+            border-bottom: 2px solid rgb(255, 255, 255);
+            margin: auto;
+        }
+    </style>
+
+
+    <title>Rui Chen's Face Combiner</title>
+
+    <link rel="stylesheet" href="{{ url_for('static',filename='css/main.css') }}" />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+</head>
+
+<body>
+
+    <div style="padding:20px;">
+
+        <div class="title_container">
+            <div class="subtitle_container">
+                <h2> Rui Chen's </h2>
+
+            </div>
+
+            <h4> Face Combiner </h4>
+        </div>
+        <div class="flash_container">
+        <p>
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+        <ul class=flashes>
+            {% for message in messages %}
+            <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endwith %}
+        </p>
+    </div>
+        <div class="submit_container">
+            <form method="post" action="/" enctype="multipart/form-data">
+                <dl >
+                    <p>
+                        <input type="file" name="files[]" multiple="true" autocomplete="off" required>
+                    </p>
+                </dl>
+                <p>
+                    <input type="submit" value="Submit" class="btn">
+                </p>
+            </form>
+        </div>
+    </div>
+    <div class="picture_container">
+        <img class='image' id="picture" src="data:image/png;base64,{{img_data}}">
+    </div>
+</body>
+
+</html>
