@@ -16,7 +16,7 @@ The average face generator is a website that takes pictures of faces that the us
 
 ## ⚙️ How it was built
 
-The first thing that was built was the algorithm to generate the faces.
+The algorithm involves the standard steps as followed.
 <ul>
   <li> From each facial image uploaded, dlib was used to calculate 68 facial landmarks.</li>
   <li> The images were then normalized to set dimensions using a similarity transform and overlapped by the corners of their eyes. </li>
@@ -24,6 +24,8 @@ The first thing that was built was the algorithm to generate the faces.
   <li> A Delaunay Triangulation was calculated using the averaged facial landmarks. </li>
   <li> The Delaunay Triangulation is used against each image to warp each face to the shape of the average face. </li>
 </ul>
+
+From here, the website consumes images that the user uploads and converts them vectors of strings, serving as a way to hold on to the images, and runs them through the algorithm.
 
 ## 🚧 Challenges I ran into
 

@@ -1,255 +1,134 @@
-#################################################################
-# Rui Chen
-# Python program that generates the average of faces 
-# December 21, 2022
-#################################################################
-
-
-
-###########################
-#Important things to import
 import os
 import cv2
-import dlib
 import numpy as np
 import math
-import sys
-###########################
 
-#################################################################
-# Computes similarity transform given two sets of two points, but since
-# OpenCV requires 3 pairs of corresponding points We are faking the third one.
-# Similarity transform essentially zooms in on the face so every image is
-# a 600 x 600 image
-#################################################################
+_height = 600
+_width = 600
 
-def similarityTransform(inPoints, outPoints) :
-    s60 = math.sin(60*math.pi/180)
-    c60 = math.cos(60*math.pi/180)  
-  
-    inPts = np.copy(inPoints).tolist()
-    outPts = np.copy(outPoints).tolist()
-    
-    xin = c60*(inPts[0][0] - inPts[1][0]) - s60*(inPts[0][1] - inPts[1][1]) + inPts[1][0]
-    yin = s60*(inPts[0][0] - inPts[1][0]) + c60*(inPts[0][1] - inPts[1][1]) + inPts[1][1]
-    
-    inPts.append([int(xin), int(yin)])
 
-    xout = c60*(outPts[0][0] - outPts[1][0]) - s60*(outPts[0][1] - outPts[1][1]) + outPts[1][0]
-    yout = s60*(outPts[0][0] - outPts[1][0]) + c60*(outPts[0][1] - outPts[1][1]) + outPts[1][1]
-    
-    outPts.append([int(xout), int(yout)])
-    
-    tform = cv2.estimateAffinePartial2D(np.array([inPts]), np.array([outPts]))
-    
+def similarity_transform(input_p, output_p):
+    sin_60 = math.sin((60 * math.pi)/180)
+    cos_60 = math.cos((60 * math.pi)/180)
+    x_in = cos_60 * (input_p[0][0] - input_p[1][0]) - sin_60 * (input_p[0][1] - input_p[1][1]) + input_p[1][0]
+    y_in = sin_60 * (input_p[0][0] - input_p[1][0]) + cos_60 * (input_p[0][1] - input_p[1][1]) + input_p[1][1]
+    x_out = cos_60 * (output_p[0][0] - output_p[1][0]) - sin_60 * (output_p[0][1] - output_p[1][1]) + output_p[1][0]
+    y_out = sin_60 * (output_p[0][0] - output_p[1][0]) + cos_60 * (output_p[0][1] - output_p[1][1]) + output_p[1][1]
+
+    input_p = [[input_p[0][0], input_p[0][1]],
+               [input_p[1][0], input_p[1][1]],
+               [x_in, y_in]]
+    output_p = [[output_p[0][0], output_p[0][1]],
+                [output_p[1][0], output_p[1][1]],
+                [x_out, y_out]]
+    tform = cv2.estimateAffinePartial2D(np.array(input_p), np.array(output_p))
     return tform[0]
-    
-#################################################################
 
-#################################################################
-# Checks if a point is inside a rectangle
-def rectContains(rect, point) :
-    if point[0] < rect[0] :
-        return False
-    elif point[1] < rect[1] :
-        return False
-    elif point[0] > rect[2] :
-        return False
-    elif point[1] > rect[3] :
-        return False
-    return True
-#################################################################
 
-#################################################################
-# Calculates the Delanauy triangle using the 68 points and 8 points 
-# on the boundary of the output image to calculate a Delaunay Triangulation
-#################################################################
+def rect_contains(rect, point):
+    return not (point[0] < rect[0] or point[1] < rect[1] or point[0] > rect[2] or point[1] > rect[3])
 
-def calculateDelaunayTriangles(rect, points):
-    # Create subdiv
+
+def calculate_triangles(rect, points):
     subdiv = cv2.Subdiv2D(rect)
-   
-    # Insert points into subdiv
     for p in points:
         subdiv.insert((p[0], p[1]))
 
-    # List of triangles. Each triangle is a list of 3 points ( 6 numbers )
-    triangleList = subdiv.getTriangleList()
+    delaunay = []
+    triangle_list = subdiv.getTriangleList()
+    for triangle in triangle_list:
+        point1 = (triangle[0], triangle[1])
+        point2 = (triangle[2], triangle[3])
+        point3 = (triangle[4], triangle[5])
+        triple = [point1, point2, point3]
+        if rect_contains(rect, point1) and rect_contains(rect, point2) and rect_contains(rect, point3):
+            indices = []
+            for i in range(0, 3):
+                for j in range(0, len(points)):
+                    if abs(triple[i][1] - points[j][1]) < 1 and abs(triple[i][0] - points[j][0]) < 1:
+                        indices.append(j)
+            if len(indices) == 3:
+                delaunay.append((indices[0], indices[1], indices[2]))
+    return delaunay
 
-    # Find the indices of triangles in the points array
-    delaunayTri = []
-    
-    for t in triangleList:
-        pt = []
-        pt.append((t[0], t[1]))
-        pt.append((t[2], t[3]))
-        pt.append((t[4], t[5]))
-        
-        pt1 = (t[0], t[1])
-        pt2 = (t[2], t[3])
-        pt3 = (t[4], t[5])        
-        
-        if rectContains(rect, pt1) and rectContains(rect, pt2) and rectContains(rect, pt3):
-            ind = []
-            for j in range(0, 3):
-                for k in range(0, len(points)):                    
-                    if(abs(pt[j][0] - points[k][0]) < 1.0 and abs(pt[j][1] - points[k][1]) < 1.0):
-                        ind.append(k)                            
-            if len(ind) == 3:                                                
-                delaunayTri.append((ind[0], ind[1], ind[2]))
 
-    return delaunayTri
+def constrain_point(p, w, h) :
+    return min(max(p[0],0), w - 1), min(max(p[1],0), h - 1)
 
-def constrainPoint(p, w, h) :
-    p =  ( min( max( p[0], 0 ) , w - 1 ) , min( max( p[1], 0 ) , h - 1 ) )
-    return p
 
-# Apply affine transform calculated using srcTri and dstTri to src and
-# output an image of size.
 def applyAffineTransform(src, srcTri, dstTri, size) :
-    
-    # Given a pair of triangles, find the affine transform.
-    warpMat = cv2.getAffineTransform( np.float32(srcTri), np.float32(dstTri) )
-    
-    # Apply the Affine Transform just found to the src image
-    dst = cv2.warpAffine( src, warpMat, (size[0], size[1]), None, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101 )
-
-    return dst
+    warpMat = cv2.getAffineTransform(np.float32(srcTri), np.float32(dstTri))
+    return cv2.warpAffine(src, warpMat, (size[0], size[1]), None, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
 
 
-# Warps and alpha blends triangular regions from img1 and img2 to img
-def warpTriangle(img1, img2, t1, t2) :
+def warpTriangle(img1, img2, triangle1, triangle2) :
+    rect1 = cv2.boundingRect(np.float32([triangle1]))
+    rect2 = cv2.boundingRect(np.float32([triangle2]))
 
-    # Find bounding rectangle for each triangle
-    r1 = cv2.boundingRect(np.float32([t1]))
-    r2 = cv2.boundingRect(np.float32([t2]))
-
-    # Offset points by left top corner of the respective rectangles
     t1Rect = [] 
     t2Rect = []
     t2RectInt = []
-
     for i in range(0, 3):
-        t1Rect.append(((t1[i][0] - r1[0]),(t1[i][1] - r1[1])))
-        t2Rect.append(((t2[i][0] - r2[0]),(t2[i][1] - r2[1])))
-        t2RectInt.append(((t2[i][0] - r2[0]),(t2[i][1] - r2[1])))
+        t1Rect.append(((triangle1[i][0] - rect1[0]), (triangle1[i][1] - rect1[1])))
+        t2Rect.append(((triangle2[i][0] - rect2[0]), (triangle2[i][1] - rect2[1])))
+        t2RectInt.append(((triangle2[i][0] - rect2[0]),(triangle2[i][1] - rect2[1])))
 
-
-    # Get mask by filling triangle
-    mask = np.zeros((r2[3], r2[2], 3), dtype = np.float32)
+    mask = np.zeros((rect2[3], rect2[2], 3), dtype = np.float32)
     cv2.fillConvexPoly(mask, np.int32(t2RectInt), (1.0, 1.0, 1.0), 16, 0)
 
-    # Apply warpImage to small rectangular patches
-    img1Rect = img1[r1[1]:r1[1] + r1[3], r1[0]:r1[0] + r1[2]]
-    
-    size = (r2[2], r2[3])
-
+    img1Rect = img1[rect1[1]:rect1[1] + rect1[3], rect1[0]:rect1[0] + rect1[2]]
+    size = (rect2[2], rect2[3])
     img2Rect = applyAffineTransform(img1Rect, t1Rect, t2Rect, size)
-    
     img2Rect = img2Rect * mask
 
-    # Copy triangular region of the rectangular patch to the output image
-    img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] * ( (1.0, 1.0, 1.0) - mask )
-     
-    img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Rect
+    img2[rect2[1]:rect2[1]+rect2[3], rect2[0]:rect2[0]+rect2[2]] = img2[rect2[1]:rect2[1]+rect2[3], rect2[0]:rect2[0]+rect2[2]] * ( (1.0, 1.0, 1.0) - mask )
+    img2[rect2[1]:rect2[1]+rect2[3], rect2[0]:rect2[0]+rect2[2]] = img2[rect2[1]:rect2[1]+rect2[3], rect2[0]:rect2[0]+rect2[2]] + img2Rect
 
-#################################################################
-# makeAverageImage method that takes all the points and 
-# all the images and creates the average face with them
-#################################################################
 
 def makeAverageImage(allPoints, images):
-    
-    # Sets the path for the images
-    path = 'static/uploads/'
-    
-    # Dimensions of output image
-    w = 600
-    h = 600
+    global _height
+    global _width
 
-    # Eye corners
-    eyecornerDst = [ (int(0.3 * w ), int(h / 3)), (int(0.7 * w ), int(h / 3)) ]
-    
-    imagesNorm = []
-    pointsNorm = []
-    
-    # Add boundary points for delaunay triangulation
-    boundaryPts = np.array([(0,0), (w/2,0), (w-1,0), (w-1,h/2), ( w-1, h-1 ), ( w/2, h-1 ), (0, h-1), (0,h/2) ])
-    
-    # Initialize location of average points to 0s
-    pointsAvg = np.array([(0,0)]* ( len(allPoints[0]) + len(boundaryPts) ), np.float32())
-    
-    n = len(allPoints[0])
-
+    eyecorner_dist = [(int(0.3 * _width), int(_height / 3)), (int(0.7 * _width), int(_height / 3))]
+    imagesN = []
+    pointsN = []
+    boundary_points = np.array([(0,0), (_width/2, 0), (_width-1, 0), (_width-1, _height/2), (_width-1, _height-1 ), (_width/2, _height-1), (0, _height-1), (0, _height/2)])
+    pointsAvg = np.array([(0,0)]* (len(allPoints[0]) + len(boundary_points)), np.float32())
     numImages = len(images)
-    
     #################################################################
     # Applies similarity transform to each image to make each one 600 x 600 
     # centered on the face and transforms landmarks to correspond as well.
     # Also finds the average of the transformed landmarks.
     #################################################################
-
     for i in range(0, numImages):
-
         points1 = allPoints[i]
-
         # Corners of the eye in input image
-        eyecornerSrc  = [ allPoints[i][36], allPoints[i][45] ] 
-        
-        # Compute similarity transform
-        tform = similarityTransform(eyecornerSrc, eyecornerDst)
-        
-        # Apply similarity transformation
-        img = cv2.warpAffine(images[i], tform, (w,h))
-
-        # Apply similarity transform on points
+        eyecornerSrc  = [ allPoints[i][36], allPoints[i][45] ]
+        tform = similarity_transform(eyecornerSrc, eyecorner_dist)
+        img = cv2.warpAffine(images[i], tform, (_width,_height))
         points2 = np.reshape(np.array(points1), (68,1,2))
-        
         points = cv2.transform(points2, tform)
-        
         points = np.float32(np.reshape(points, (68, 2)))
-        
-        # Append boundary points. Will be used in Delaunay Triangulation
-        points = np.append(points, boundaryPts, axis=0)
-        
-        # Calculate location of average landmark points.
+        points = np.append(points, boundary_points, axis=0)
         pointsAvg = pointsAvg + points / numImages
-        
-        pointsNorm.append(points)
-        imagesNorm.append(img)
+        pointsN.append(points)
+        imagesN.append(img)
     
     # Delaunay triangulation
-    rect = (0, 0, w, h)
-    dt = calculateDelaunayTriangles(rect, np.array(pointsAvg))
-
-    # Output image
-    output = np.zeros((h,w,3), np.float32())
-    
-    # Warp input images to average image landmarks
-    for i in range(0, len(imagesNorm)) :
-        img = np.zeros((h,w,3), np.float32())
-        # Transform triangles one by one
-        for j in range(0, len(dt)) :
+    rect = (0, 0, _width, _height)
+    dt = calculate_triangles(rect, np.array(pointsAvg))
+    output = np.zeros((_height, _width, 3), np.float32())
+    for i in range(0, len(imagesN)):
+        img = np.zeros((_height, _width, 3), np.float32())
+        for j in range(0, len(dt)):
             tin = []
             tout = []
-            
-            for k in range(0, 3) :                
-                pIn = pointsNorm[i][dt[j][k]]
-                pIn = constrainPoint(pIn, w, h)
-                
-                pOut = pointsAvg[dt[j][k]]
-                pOut = constrainPoint(pOut, w, h)
-                
-                tin.append(pIn)
-                tout.append(pOut)
-            
-            warpTriangle(imagesNorm[i], img, tin, tout)
-
-        # Add image intensities for averaging
+            for k in range(0, 3):
+                tin.append(constrain_point(pointsN[i][dt[j][k]], _width, _height))
+                tout.append(constrain_point(pointsAvg[dt[j][k]], _width, _height))
+            warpTriangle(imagesN[i], img, tin, tout)
         output = output + img
 
-    # creates the resulting image
-    output = output / numImages
-    output = cv2.convertScaleAbs(output,alpha=(255.0))
-
+    output = output/numImages
+    output = cv2.convertScaleAbs(output, alpha=(255.0))
     return output
